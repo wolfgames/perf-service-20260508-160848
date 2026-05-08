@@ -32,8 +32,8 @@ export const GAME_DEFAULTS: GameTuning = {
     skipStartScreen: false,
   },
   screens: {
-    startBackgroundColor: '#BCE083',
-    loadingBackgroundColor: '#BCE083',
+    startBackgroundColor: '#1a1a2e',
+    loadingBackgroundColor: '#1a1a2e',
   },
 };
 

@@ -1,11 +1,8 @@
 /**
- * Start Screen View — DOM mode template
+ * Dash Benchmark — Start Screen
  *
- * Called by screens/StartScreen.tsx — the bridge between Solid.js and your start screen.
- *
- * In DOM mode: the Play button loads core + audio bundles, then navigates.
- * In Pixi mode: you can also call initGpu() here to set up the GPU early,
- * then build your start screen scene graph with PixiJS.
+ * Renders: 'Dash Benchmark' title, 'Tap to jump' instruction, 'Start' button.
+ * Calls unlockAudio before navigating to game (mobile audio requirement).
  */
 
 import type {
@@ -18,48 +15,52 @@ export const setupStartScreen: SetupStartScreen = (deps: StartScreenDeps): Start
   let wrapper: HTMLDivElement | null = null;
 
   return {
-    backgroundColor: '#BCE083',
+    backgroundColor: '#1a1a2e',
 
     init(container: HTMLDivElement) {
-      console.log('[mygame] Start screen initialized');
-
       wrapper = document.createElement('div');
       wrapper.style.cssText =
-        'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:24px;';
+        'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:24px;background:#1a1a2e;';
 
       const title = document.createElement('h1');
-      title.textContent = 'Start Screen';
+      title.textContent = 'Dash Benchmark';
       title.style.cssText =
-        'font-size:2.5rem;font-weight:700;color:#2d5016;margin:0;font-family:system-ui,sans-serif;';
+        'font-size:2.5rem;font-weight:700;color:#fff;margin:0;font-family:system-ui,sans-serif;text-align:center;';
 
-      const playBtn = document.createElement('button');
-      playBtn.textContent = 'Play';
-      playBtn.style.cssText =
-        'font-size:1.25rem;font-weight:600;padding:14px 48px;border:none;border-radius:12px;' +
+      const instruction = document.createElement('p');
+      instruction.textContent = 'Tap to jump';
+      instruction.style.cssText =
+        'font-size:1.125rem;color:rgba(255,255,255,0.8);margin:0;font-family:system-ui,sans-serif;';
+
+      const startBtn = document.createElement('button');
+      startBtn.textContent = 'Start';
+      startBtn.style.cssText =
+        'font-size:1.25rem;font-weight:600;padding:16px 64px;border:none;border-radius:12px;' +
         'background:#4a8c1c;color:#fff;cursor:pointer;font-family:system-ui,sans-serif;' +
-        'box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:transform 0.1s,box-shadow 0.1s;';
-      playBtn.onmouseenter = () => { playBtn.style.transform = 'scale(1.05)'; };
-      playBtn.onmouseleave = () => { playBtn.style.transform = 'scale(1)'; };
+        'box-shadow:0 4px 12px rgba(0,0,0,0.3);transition:transform 0.1s,box-shadow 0.1s;' +
+        'min-width:160px;min-height:52px;';
+      startBtn.onmouseenter = () => { startBtn.style.transform = 'scale(1.05)'; };
+      startBtn.onmouseleave = () => { startBtn.style.transform = 'scale(1)'; };
 
-      playBtn.addEventListener('click', async () => {
-        playBtn.disabled = true;
-        playBtn.textContent = 'Loading...';
-        await deps.initGpu();
+      startBtn.addEventListener('click', async () => {
+        startBtn.disabled = true;
+        startBtn.textContent = 'Loading...';
+        // Audio unlock must fire before any game sound (mobile requirement)
         deps.unlockAudio();
+        await deps.initGpu();
         await deps.loadCore();
         try { await deps.loadAudio(); } catch { /* audio optional */ }
         deps.analytics.trackGameStart({ start_source: 'play_button', is_returning_player: false });
         deps.goto('game');
       }, { once: true });
 
-      wrapper.append(title, playBtn);
+      wrapper.append(title, instruction, startBtn);
       container.append(wrapper);
     },
 
     destroy() {
       wrapper?.remove();
       wrapper = null;
-      console.log('[mygame] Start screen destroyed');
     },
   };
-}
+};
