@@ -1,0 +1,18 @@
+run: "01"
+pipeline_version: "0.3.8"
+pass: core
+started: "2026-05-08T16:12:00Z"
+status: in-progress
+config:
+  gdd_gate: auto-handoff
+  think_only: false
+  trace: false
+  skip_groups: []
+  allow_skip_pass: false
+phases:
+  - id: pass-gate
+    status: complete
+    summary: "core pass has no N-1 prerequisite; gate passed (core-pass-no-check)"
+  - id: prime
+    status: complete
+    summary: "project=Dash Benchmark; stack=pixi+solidjs+gsap+bun(vite,vitest); greenfield=true; buildCmd=bun run build; testCmd=bun run test:run; reserved_bottom_px=64"

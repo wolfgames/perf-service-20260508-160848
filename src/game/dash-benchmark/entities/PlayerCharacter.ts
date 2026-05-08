@@ -4,6 +4,7 @@
  */
 
 import { Graphics } from 'pixi.js';
+import { gsap } from 'gsap';
 import type { CharacterState } from '../systems/PhysicsSystem';
 import { stepPhysics } from '../systems/PhysicsSystem';
 import { DASH_TUNING } from '../tuning';
@@ -55,25 +56,22 @@ export const createCharacterController = ({
   const syncSprite = (state: CharacterState, prevState: CharacterState): void => {
     sprite.y = state.y - CHARACTER_SIZE;
 
-    // Squash on landing
+    // Squash on landing — kill any in-flight tween before starting a new one (G2).
     if (prevState.movementState !== 'Idle' && state.movementState === 'Idle') {
-      import('gsap').then(({ gsap }) => {
-        gsap.killTweensOf(sprite.scale);
-        gsap.to(sprite.scale, {
-          y: 0.8,
-          duration: 0.04,
-          yoyo: true,
-          repeat: 1,
-          ease: 'power1.inOut',
-        });
-      }).catch(() => { /* gsap optional in tests */ });
+      gsap.killTweensOf(sprite.scale);
+      gsap.to(sprite.scale, {
+        y: 0.8,
+        duration: 0.04,
+        yoyo: true,
+        repeat: 1,
+        ease: 'power1.inOut',
+      });
     }
   };
 
   const destroy = (): void => {
-    import('gsap').then(({ gsap }) => {
-      gsap.killTweensOf(sprite.scale);
-    }).catch(() => { /* no-op */ });
+    // Kill tweens synchronously before destroy (G2, G18).
+    gsap.killTweensOf(sprite.scale);
     sprite.destroy({ children: true });
   };
 

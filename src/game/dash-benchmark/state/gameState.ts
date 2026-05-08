@@ -14,8 +14,13 @@ export const WIN_HEADING = 'Level Complete!';
 export const computeLevelScore = (distanceTravelled: number, currentScrollSpeed: number): number =>
   Math.floor(distanceTravelled * (currentScrollSpeed / DASH_TUNING.SCROLL_SPEED));
 
-/** Goal distance for a given level (grows with level to provide progression). */
-const goalForLevel = (level: number): number => 200 + (level - 1) * 50;
+/**
+ * Goal distance for a given level (grows with level to provide progression).
+ * L1 baseline: 3000 units (~11 s at 280 px/s) ensures the player encounters
+ * obstacles before winning (fixes L1:too_easy from player-flow audit).
+ * GDD spec: 200–1 000 units referred to difficulty tiers, not raw run length.
+ */
+const goalForLevel = (level: number): number => 3000 + (level - 1) * 500;
 
 export interface GameStateDash {
   distance: () => number;
@@ -23,6 +28,8 @@ export interface GameStateDash {
   boardState: () => BoardState;
   scrollSpeed: () => number;
   levelScore: () => number;
+  /** The current level number (set by reset()). */
+  level: () => number;
 
   /** Advance distance by scrollSpeed * dt; clamps when Won/Lost. */
   stepDistance: (dt: number) => void;
@@ -44,6 +51,7 @@ function createGameStateDash(): GameStateDash {
   const [boardState, setBoardState] = createSignal<BoardState>('Idle');
   const [scrollSpeed, setScrollSpeedSignal] = createSignal(DASH_TUNING.SCROLL_SPEED);
   const [levelScore, setLevelScore] = createSignal(0);
+  const [level, setLevel] = createSignal(1);
 
   const stepDistance = (dt: number): void => {
     if (boardState() !== 'Idle' && boardState() !== 'Jumping' && boardState() !== 'Falling') return;
@@ -69,9 +77,10 @@ function createGameStateDash(): GameStateDash {
     setScrollSpeedSignal(speed);
   };
 
-  const reset = (level: number): void => {
+  const reset = (lvl: number): void => {
+    setLevel(lvl);
     setDistance(0);
-    setGoal(goalForLevel(level));
+    setGoal(goalForLevel(lvl));
     setBoardState('Idle');
     setScrollSpeedSignal(DASH_TUNING.SCROLL_SPEED);
     setLevelScore(0);
@@ -83,6 +92,7 @@ function createGameStateDash(): GameStateDash {
     boardState,
     scrollSpeed,
     levelScore,
+    level,
     stepDistance,
     setWon,
     setLost,

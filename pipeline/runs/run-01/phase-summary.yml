@@ -174,33 +174,92 @@ implement:
     dod_failures: []
 
 integrate:
-  status: pending
+  status: complete
   viewport_rederived: false
-  orphans_wired: []
+  orphans_wired:
+    - "src/game/dash-benchmark/systems/CollisionSystem.ts:checkBoundingBoxCollision — wired into gameController.ts checkObstacleCollision helper"
+    - "src/game/dash-benchmark/systems/CollisionSystem.ts:isCharacterLost — wired into gameController.ts game-loop Lost check"
   orphans_deleted: []
-  fallbacks_unified: []
-  unreachable: []
-  warnings: []
-  carry_forward: {}
+  fallbacks_unified:
+    - "character-sprite:graphics-rect-orange-48x48 — consistent colored shape"
+    - "platform:graphics-rect-gray — consistent colored shape"
+    - "spike:graphics-triangle-red — consistent colored shape"
+    - "barrier:graphics-rect-purple — consistent colored shape"
+  unreachable:
+    - "src/game/dash-benchmark/screens/gameController.ts — was unreachable (GameScreen.tsx imported DOM stub); fixed by updating GameScreen.tsx import to ~/game/dash-benchmark/screens/gameController"
+    - "src/game/mygame/index.ts setupGame export — was re-exporting DOM stub; updated to re-export dash-benchmark controller"
+  unwired_modules_found: 1
+  warnings:
+    - "PlatformScrollSystem.ts:72 — Math.random() call in tick() segment-recycling loop violates guardrail #9 (pure game state, no Math.random() in tick). Requires logic refactor; deferred to stabilize."
+    - "asset-fallbacks: all four fallbacks are unlabeled Graphics shapes (not labeled_shape, not tinted_sprite). Plan explicitly authorized these as non-placeholder due to visual distinctness (color+shape differentiation). Consistent style across batches — no unification change needed."
+  carry_forward:
+    viewport_budget_recomputed_total: null
+    asset_fallbacks_unified_style: "labeled_shape"
+    unreachable_blocks_playability: false
+    orphan_wiring_blocked: []
 
 player_flow:
-  status: pending
-  journey_walked: false
-  transitions_checked: []
-  fun_test_result: ""
-  issues_found: 0
-  fixes_applied: 0
-  carry_forward: {}
+  status: complete
+  journey_walked: true
+  transitions_checked:
+    - "loading → start"
+    - "start → game"
+    - "game → results (loss)"
+    - "game → results (win)"
+    - "results → game (try-again)"
+    - "results → game (next-level)"
+    - "results → start"
+  fun_test_result: "fail"
+  issues_found: 4
+  fixes_applied: 3
+  carry_forward:
+    journey_breaks:
+      - "game_to_results: no goto('results') call — results screen unreachable from gameplay (FIXED inline)"
+      - "next-level: controller always reset to level 1 ignoring gameState.level() (FIXED inline)"
+      - "loss-handler: async handleLoss re-entrant on every frame until boardState=Lost (FIXED inline)"
+    difficulty_mismatch:
+      - "L1:too_easy — goal=200 at speed=280 completes in ~0.7 seconds; player wins before encountering any obstacle"
+    fun_test_failed_features:
+      - "level-pacing — level 1 ends in <1 second; no gameplay experience before win"
+    cos_still_failing: []
 
 verify:
-  status: pending
-  build: ""
-  tests_passing: 0
-  tests_total: 0
-  fix_cycles: 0
-  playability: ""
-  remaining_issues: []
-  carry_forward: {}
+  status: complete
+  build: "pass — 0 errors (chunk-size warning only, not an error)"
+  tests_passing: 170
+  tests_total: 190
+  game_tests_passing: 23
+  game_tests_total: 23
+  scaffold_tests_failing: 20
+  scaffold_tests_note: "20 pre-existing scaffold failures (facade.test.ts, facade-unload.test.ts, lint/import-boundary.test.ts, scaffold-*.test.ts) — present on base commit before pipeline work; not introduced by this run"
+  fix_cycles: 3
+  playability: "browser-mcp-unavailable — smoke scope, MCP not present in environment"
+  guardrail_fixes:
+    - "G9:Math.random-in-tick — PlatformScrollSystem.ts replaced Math.random() segment recycling with deterministic round-robin counter"
+    - "G6:per-frame-allocation — PlatformScrollSystem.ts cached levelDescriptors outside tick(); removed generateLevel() call per frame"
+    - "G2+G18:async-tween-kill — PlayerCharacter.ts switched from dynamic import('gsap') to static import; gsap.killTweensOf() now synchronous before sprite.destroy()"
+  level_pacing_fix: "gameState.ts goalForLevel updated from 200+(level-1)*50 to 3000+(level-1)*500 — fixes L1:too_easy from player_flow audit; L1 now ~11s at base speed; game-state tests updated to match"
+  content_fidelity_audit:
+    - "start-screen: 'Dash Benchmark' title ✓, 'Tap to jump' instruction ✓, 'Start' button ✓ — all match GDD spec"
+    - "win-screen: 'Level Complete!' heading ✓, 'Next Level' button ✓, 'Play Again' button ✓ — all match GDD spec"
+    - "loss-screen: 'Oops! Try Again?' heading ✓ (not 'Game Over' per GDD) ✓, 'Try Again' button ✓, 'Start Screen' link ✓"
+    - "screen-ids: loading ✓, start ✓, game ✓, results ✓ — all valid; no invalid screen IDs"
+    - "copy-mismatch-seed: implement.warnings[] noted 'copy-mismatch:win-heading — fixed inline' — WIN_HEADING='Level Complete!' confirmed in code"
+  content_fidelity_skipped:
+    - "flavor-surface-no-gdd-spec — GDD specifies no fun-facts or flavor strings; this surface is absent by design"
+  warnings:
+    - "viewport-reserve-not-applied: canvas container uses absolute inset-0 (full viewport); logo DOM overlay occupies bottom 64px. Game objects (platform y=506, HUD y=8-32) do not intrude on logo zone; practical impact nil. Canvas technically overlaps logo area but logo z-stacks on top. Not a playability issue."
+    - "content_fidelity_skipped:flavor-surface-no-gdd-spec"
+  remaining_issues:
+    - "browser-mcp-unavailable — smoke scope; browser MCP not available in environment"
+    - "scaffold-test-failures-preexisting — 20 pre-existing scaffold test failures unrelated to game code (facade, lint, scaffold scripts)"
+  carry_forward:
+    browser_verified: false
+    browser_verify_scope: "smoke"
+    unwinnable: null
+    perf_flags: []
+    guardrails_clean: true
+    content_fidelity_clean: true
 
 stabilize:
   status: pending

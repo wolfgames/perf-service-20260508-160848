@@ -10,9 +10,9 @@ describe('dash-benchmark: game state', () => {
     state.reset(1);
   });
 
-  it('initializes distance=0 goal=200 boardState=Idle scrollSpeed=280', () => {
+  it('initializes distance=0 goal=3000 boardState=Idle scrollSpeed=280', () => {
     expect(state.distance()).toBe(0);
-    expect(state.goal()).toBe(200);
+    expect(state.goal()).toBe(3000);
     expect(state.boardState()).toBe('Idle');
     expect(state.scrollSpeed()).toBe(DASH_TUNING.SCROLL_SPEED);
   });
@@ -23,12 +23,13 @@ describe('dash-benchmark: game state', () => {
   });
 
   it('transitions to Won when distance reaches goal', () => {
-    state.stepDistance(1.0); // 280 units — exceeds goal of 200
+    // Step enough frames to reach the level-1 goal of 3000 units
+    state.stepDistance(11.0); // 280 * 11 = 3080 units — exceeds goal of 3000
     expect(state.boardState()).toBe('Won');
   });
 
   it('stops incrementing after Won or Lost', () => {
-    state.stepDistance(1.0); // transitions to Won
+    state.stepDistance(11.0); // transitions to Won (3080 > 3000)
     const distAfterWon = state.distance();
     state.stepDistance(0.1);
     expect(state.distance()).toBe(distAfterWon);

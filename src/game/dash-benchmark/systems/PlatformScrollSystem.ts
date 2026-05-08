@@ -26,8 +26,6 @@ export interface PlatformScrollSystem {
   reset: (level: number) => void;
 }
 
-const CANVAS_WIDTH = 390;
-
 /** Build initial segments for a level, placed end-to-end starting at x=0. */
 const buildSegments = (level: number): ActiveSegment[] => {
   const descriptors = generateLevel(level);
@@ -44,7 +42,10 @@ export const createPlatformScrollSystem = (initialLevel: number): PlatformScroll
   let scrollSpeed = DASH_TUNING.SCROLL_SPEED;
   let distance = 0;
   let nextSpeedThreshold = DASH_TUNING.SPEED_INCREASE_INTERVAL;
-  let level = initialLevel;
+  // Round-robin counter for deterministic segment recycling (no Math.random() — G9).
+  let recycleIdx = 0;
+  // Pre-computed descriptor list — cached to avoid per-frame allocation (G6).
+  let cachedDescriptors: ReturnType<typeof generateLevel> = generateLevel(initialLevel);
 
   const tick = (dt: number, frozen: boolean): void => {
     if (frozen) return;
@@ -63,14 +64,14 @@ export const createPlatformScrollSystem = (initialLevel: number): PlatformScroll
       seg.xOffset -= shift;
     }
 
-    // Recycle off-screen segments to the right
+    // Recycle off-screen segments to the right using deterministic round-robin
+    // over the level's seeded descriptor list. No Math.random() allowed in tick() (G9).
+    // cachedDescriptors is pre-computed — no allocation per frame (G6).
     const rightEdge = segments.reduce((max, s) => Math.max(max, s.xOffset + s.widthPx), 0);
     for (const seg of segments) {
       if (seg.xOffset + seg.widthPx < 0) {
-        // Re-generate the next segment from the level definition (cycling through)
-        const nextDescriptors = generateLevel(level);
-        const idx = Math.floor(Math.random() * nextDescriptors.length);
-        const refill = nextDescriptors[idx];
+        const refill = cachedDescriptors[recycleIdx % cachedDescriptors.length];
+        recycleIdx++;
         seg.type = refill.type;
         seg.widthPx = refill.widthPx;
         seg.obstacle = refill.obstacle;
@@ -84,11 +85,12 @@ export const createPlatformScrollSystem = (initialLevel: number): PlatformScroll
   const getDistance = (): number => distance;
 
   const reset = (newLevel: number): void => {
-    level = newLevel;
     segments = buildSegments(newLevel);
+    cachedDescriptors = generateLevel(newLevel);
     scrollSpeed = DASH_TUNING.SCROLL_SPEED;
     distance = 0;
     nextSpeedThreshold = DASH_TUNING.SPEED_INCREASE_INTERVAL;
+    recycleIdx = 0;
   };
 
   return { tick, getSegments, getScrollSpeed, getDistance, reset };
