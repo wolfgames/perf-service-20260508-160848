@@ -1,0 +1,624 @@
+# implementation-plan.yml — Structured batch execution plan
+# Written by phase 30 (plan). Read by implement, integrate, player-flow, stabilize.
+
+game: "Dash Benchmark"
+gdd_type: "additive"          # mostly new / content-gap features; core mechanic (DOM→Pixi) is new-build, not replace
+total_batches: 5
+total_features: 18            # 1 exists (unchanged) + 5 partial (extended) + 12 new + 2 content-gap addressed
+new_files: 15
+modified_files: 7
+
+viewport_budget:
+  default:
+    dom_reserved_top: 0        # src: pipeline-context.yml prime.carry_forward.reserved_top_px
+    hud_top: 40                # Pixi Text distance counter; ~24px font + 16px padding; placed at y=8
+    play_area_top: 40          # characters + obstacles start below HUD band
+    platform_base_y: 506       # 844 * 0.60 = 506.4 rounded; platform occupies bottom 40% of canvas
+    platform_lane_height: 274  # 506 to 780 (canvas bottom minus dom_reserved_bottom)
+    dom_reserved_bottom: 64    # WolfGamesLogo 32px + margin; src: pipeline-context.yml prime.carry_forward.reserved_bottom_px
+    jump_space: 466            # 506 - 40 = 466px headroom for jump arc
+    canvas_total: 844
+    total_used: 844            # full canvas; no overflow
+    notes: >
+      Platform base at y=506 (60% of 844). HUD band 0-40px top. DOM logo 64px bottom.
+      Jump space 466px — ample for JUMP_VELOCITY=-520/GRAVITY=1400 arc (~480ms, ~86px peak).
+      Values sourced from GDD physics constants and scaffold prime.carry_forward.
+
+resolved_questions:
+  - question: "What is the game slug (directory name under src/game/)?"
+    decision: "dash-benchmark"
+    rationale: >
+      GDD title 'Dash Benchmark'. Kebab-case per project-structure convention (folder-naming).
+      Matches default_hint from gdd-analysis.yml. Creates src/game/dash-benchmark/.
+
+  - question: "Should the player character sprite use emoji fallback, tinted rectangle, or atlas sprite?"
+    decision: "tinted-rect (48×48 px orange Pixi Graphics rectangle)"
+    rationale: >
+      GDD describes 'small rectangular sprite'. No atlas defined. Design-smells fallback
+      priority: emoji text > tinted sprite > labeled shape. A visibly distinct orange
+      rectangle is readable and non-placeholder. Size set to 48×48 to satisfy cos-canvas
+      minimum (skill-wins on character-visual-size collision). Not labeled because the
+      character is the only moving object at 25% width — self-explanatory in context.
+
+  - question: "Does the results screen stay as SolidJS DOM or move to GPU?"
+    decision: "DOM with GSAP animation (existing ResultsScreen.tsx extended)"
+    rationale: >
+      Scaffold lifecycle matrix has results as a valid DOM screen. GSAP animates DOM elements
+      for the slide-in. No second canvas introduced. Guard: valid screen IDs are loading,
+      start, game, results — no new top-level screens per scaffold-state critical rule.
+
+preserve_list: []
+
+batches:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BATCH 1 — Core state + tuning + physics + level generator
+  # Topology layer 0: all downstream batches depend on these systems.
+  # NOT player-visible (pure logic/state). Hook batch is batch 2.
+  # ─────────────────────────────────────────────────────────────────────────
+  - id: 1
+    name: "Core State + Physics + Level Generator"
+    priority: P0
+    player_visible: >
+      Not yet visible to the player — pure logic layer. Topology requires these before
+      batch 2 (Pixi controller + rendering) can compile and run. hook_batch is 2.
+    features:
+      - game-state-signals
+      - game-tuning
+      - physics-movement
+      - procedural-level-gen
+      - interaction-archetype-doc
+    cos_covered: [animated-dynamics, scoring, core-interaction]
+    ux_zones:
+      thumb_zone: "none — no UI in this batch"
+      touch_targets: []
+      feedback_surfaces: []
+    acceptance:
+      # game-state-signals
+      - given: "game starts a new level"
+        should: "state has distance=0, goal=200 for level 1, boardState=Idle, scrollSpeed=280"
+      - given: "game tracks distance over time at scrollSpeed"
+        should: "distance increments by scrollSpeed * deltaTime each frame step"
+      - given: "distance reaches goal"
+        should: "boardState transitions to Won"
+      - given: "boardState is Won or Lost"
+        should: "distance no longer increments"
+      # game-tuning
+      - given: "tuning is loaded"
+        should: "SCROLL_SPEED=280, JUMP_VELOCITY=-520, GRAVITY=1400 are accessible as typed constants"
+      - given: "difficulty tier for level 1"
+        should: "tier is Warm-up (levels 1-5): gapRange=[1.0,1.2]cw, spikeFreq=0.10, noBarriers=true"
+      # physics-movement
+      - given: "character is Idle on ground and jump is triggered"
+        should: "velocityY set to JUMP_VELOCITY (-520) and state transitions to Jumping"
+      - given: "character is Jumping and jump is triggered again"
+        should: "input ignored — no double-jump; state remains Jumping"
+      - given: "character is airborne with gravity applied each frame"
+        should: "velocityY increases by GRAVITY * deltaTime per step"
+      - given: "character's computed y would drop to or below groundY"
+        should: "y clamped to groundY, velocityY=0, state transitions to Idle"
+      - given: "character falls below viewport bottom (gap)"
+        should: "state transitions to Lost"
+      # procedural-level-gen
+      - given: "generateLevel called with level=1"
+        should: "returns exactly 5 segment descriptors, first segment is platform with no obstacle"
+      - given: "generateLevel called with level=1 twice"
+        should: "returns identical output (deterministic seeded RNG, seed = 1 * 48271)"
+      - given: "any generated gap segment"
+        should: "gap width in pixels < SCROLL_SPEED * JUMP_DURATION_S (solvability check passes)"
+      - given: "level generator cannot produce a solvable layout after 10 retries"
+        should: "returns fallback: 5 platform segments, 1 spike at segment 3, no gaps"
+      # scoring CoS — multiplicative dimensions
+      - given: "player completes a level"
+        should: "final score = distanceTravelled * speedMultiplier where speedMultiplier = currentScrollSpeed / SCROLL_SPEED"
+      - given: "player completes a level having triggered speed increases"
+        should: "final score is strictly greater than base distance alone (multiplier > 1.0)"
+      # core-interaction CoS — archetype doc
+      - given: "interaction-archetype.md exists in src/game/dash-benchmark/"
+        should: "file contains interaction type (Tap), pointer sequence, cancel behavior, invalid gesture feedback, feel description"
+    test_loci:
+      - describe: "dash-benchmark: game state"
+        file: "tests/dash-benchmark/game-state.test.ts"
+        cases:
+          - "initializes distance=0 goal=200 boardState=Idle scrollSpeed=280"
+          - "increments distance each frame step by scrollSpeed * deltaTime"
+          - "transitions to Won when distance reaches goal"
+          - "stops incrementing after Won or Lost"
+      - describe: "dash-benchmark: physics system"
+        file: "tests/dash-benchmark/physics.test.ts"
+        cases:
+          - "sets velocityY to JUMP_VELOCITY on jump from Idle"
+          - "ignores double-jump when Jumping"
+          - "applies gravity to velocityY each step"
+          - "clamps to ground and resets to Idle on landing"
+          - "transitions to Lost when falling below viewport bottom"
+      - describe: "dash-benchmark: level generator"
+        file: "tests/dash-benchmark/level-generator.test.ts"
+        cases:
+          - "returns 5 segments with first segment safe for level 1"
+          - "is deterministic for same level input"
+          - "all gaps are solvable (width < scrollSpeed * jumpDuration)"
+          - "returns fallback after 10 failed retries"
+      - describe: "dash-benchmark: scoring formula"
+        file: "tests/dash-benchmark/scoring.test.ts"
+        cases:
+          - "computes levelScore = distance * speedMultiplier"
+          - "speedMultiplier > 1.0 when scrollSpeed has increased"
+    files:
+      state:
+        - src/game/dash-benchmark/state/types.ts
+        - src/game/dash-benchmark/state/gameState.ts
+        - src/game/dash-benchmark/tuning.ts
+        - src/game/dash-benchmark/systems/PhysicsSystem.ts
+        - src/game/dash-benchmark/systems/LevelGenerator.ts
+        - src/game/dash-benchmark/interaction-archetype.md
+      integration: []
+      test:
+        - tests/dash-benchmark/game-state.test.ts
+        - tests/dash-benchmark/physics.test.ts
+        - tests/dash-benchmark/level-generator.test.ts
+        - tests/dash-benchmark/scoring.test.ts
+    how:
+      - >
+        Extend src/game/state.ts (or create src/game/dash-benchmark/state/gameState.ts) to add:
+        distance (number), goal (number), boardState ('Idle'|'Jumping'|'Falling'|'Won'|'Lost'),
+        scrollSpeed (number). Signal-only (no ECS — game_greenfield: true per prime).
+        reset() must reset all new fields.
+      - >
+        Add physics constants to src/game/dash-benchmark/tuning.ts as typed DashTuning extending GameTuning:
+        SCROLL_SPEED=280, JUMP_VELOCITY=-520, GRAVITY=1400, plus difficulty tier table
+        (Warm-up L1-5, Standard L6-15, Advanced L16-25, Expert L26+). Wire gap/spike/barrier
+        parameters per tier. Expose via useTuning() hook — do not hardcode in game logic.
+      - >
+        PhysicsSystem.ts: pure function step(state, deltaTime, groundY, viewportBottom) → next state.
+        No Math.random(), no Pixi imports. LevelGenerator.ts: seededRng(seed) helper (mulberry32 or
+        xorshift32), generateLevel(levelNumber, tuning) → SegmentDescriptor[]. Solvability check
+        embedded. Hardcoded fallback per GDD. Write interaction-archetype.md documenting Tap
+        archetype (pointer sequence: pointerdown→pointerup, no drag; cancel: lift before threshold
+        ignored; invalid: tap when Jumping/Falling is silently ignored — no visual shake per GDD).
+    definition_of_done:
+      - "acceptance[] tests go red then green (bun run test:run exits 0)"
+      - "no integration call sites yet (pure logic batch — integration-file-exercised bullet deferred to batch 2 for PhysicsSystem, LevelGenerator)"
+      - "CoS sub-walk for animated-dynamics: physics step uses acceleration (gravity), not constant speed — verified in physics.test.ts; landing uses clamped settle (no instant teleport)"
+      - "CoS sub-walk for scoring: multiplicative dimensions present (distance * speedMultiplier) — verified in scoring.test.ts"
+      - "CoS sub-walk for core-interaction: interaction-archetype.md written with all required fields"
+      - "no stubs, no TODO comments, no placeholder values in shipped code (guardrail #15)"
+      - "bun run build passes within 3 fix cycles"
+    risk: MEDIUM
+    risk_reason: "State extension touches existing state.ts consumers; PhysicsSystem purity requires no Pixi imports — type-check enforces this"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BATCH 2 — Pixi Game Controller + Platform Engine + Character Renderer
+  # hook_batch: player first sees the running game.
+  # ─────────────────────────────────────────────────────────────────────────
+  - id: 2
+    name: "Pixi Game Controller + Platform + Character (Core Loop)"
+    priority: P0
+    player_visible: >
+      Player sees a scrolling platform (gray lane) from right to left. An orange 48×48 px
+      rectangle (character) sits at 25% screen width, bouncing on tap. Background is dark.
+      No obstacles yet. Player can jump over gaps. Game auto-runs.
+    features:
+      - gameplay-screen-gpu
+      - platform-engine
+      - player-character
+      - asset-manifest
+    cos_covered: [core-interaction, canvas, animated-dynamics]
+    ux_zones:
+      thumb_zone: "center (full-screen tap zone)"
+      touch_targets: [full-screen-tap-zone]
+      feedback_surfaces: [platform-lane, character-sprite]
+    acceptance:
+      # gameplay-screen-gpu / game-controller
+      - given: "player navigates to game screen"
+        should: "Pixi Application mounts on container (gameMode: 'pixi'), canvas fills viewport, no DOM elements in game code"
+      - given: "game controller initializes"
+        should: "layers created: bg, platform, character, hud, ui (in z-order); stage.eventMode='static'; platform and character layers set eventMode='passive'"
+      # platform-engine
+      - given: "game is running"
+        should: "platform segments scroll right-to-left at SCROLL_SPEED px/s; segments chain without gap visible between them"
+      - given: "character is above a gap segment"
+        should: "ground is absent — character falls under gravity if on platform edge"
+      - given: "200 distance units have accumulated"
+        should: "scroll speed increases by 5 px/s"
+      # player-character
+      - given: "player taps anywhere on screen when character is Idle"
+        should: "character sprite moves in a parabolic arc (GSAP or per-frame physics); state transitions Idle→Jumping"
+      - given: "player taps anywhere when character is Jumping or Falling"
+        should: "tap is silently ignored; no double-jump; no visual feedback"
+      - given: "character lands on a platform segment after a jump"
+        should: "character y snaps to groundY with brief squash (scaleY 0.8 → 1.0 in 80ms, GSAP back.out) and state returns to Idle"
+      # canvas CoS — visual size
+      - given: "character sprite is rendered"
+        should: "visual size is 48×48 px at 390px viewport width (satisfies canvas minimum)"
+      # canvas CoS — board layout, no HUD overlap
+      - given: "game screen renders at 390×844"
+        should: "platform lane visible in bottom 40% of canvas; character sprite does not overlap top HUD band (40px); no content in DOM-reserved bottom 64px of viewport"
+      # asset-manifest
+      - given: "game bundles are declared"
+        should: "manifest includes scene-dash-benchmark bundle (placeholder JSON path) and audio-sfx-dash bundle (placeholder); no theme-* bundles used for GPU assets"
+    test_loci:
+      - describe: "dash-benchmark: game controller init"
+        file: "tests/dash-benchmark/game-controller.test.ts"
+        cases:
+          - "mounts Pixi Application in pixi mode (not dom)"
+          - "creates layers with correct eventMode values"
+      - describe: "dash-benchmark: platform scroll system"
+        file: "tests/dash-benchmark/platform-scroll.test.ts"
+        cases:
+          - "scrolls segments at SCROLL_SPEED per second"
+          - "increases speed by 5 after 200 distance units"
+          - "segments chain without seam"
+      - describe: "dash-benchmark: character controller"
+        file: "tests/dash-benchmark/character.test.ts"
+        cases:
+          - "triggers jump arc on tap from Idle"
+          - "ignores tap when Jumping or Falling"
+          - "snaps to groundY and squash-settles on landing"
+          - "character visual is 48×48 px at 390 viewport"
+    files:
+      state:
+        - src/game/dash-benchmark/entities/PlayerCharacter.ts
+        - src/game/dash-benchmark/systems/PlatformScrollSystem.ts
+      integration:
+        - src/game/dash-benchmark/screens/gameController.ts
+        - src/game/dash-benchmark/renderers/GameRenderer.ts
+        - src/game/dash-benchmark/renderers/PlatformRenderer.ts
+        - src/game/dash-benchmark/renderers/CharacterRenderer.ts
+        - src/game/asset-manifest.ts
+      test:
+        - tests/dash-benchmark/game-controller.test.ts
+        - tests/dash-benchmark/platform-scroll.test.ts
+        - tests/dash-benchmark/character.test.ts
+    how:
+      - >
+        Replace src/game/mygame/screens/gameController.ts (the DOM stub) by setting gameMode: 'pixi',
+        initializing a Pixi Application with resizeTo: container. Create layers (bg: Container,
+        platformLayer: Container, charLayer: Container, hudLayer: Container, uiLayer: Container)
+        added in that order to app.stage. Set eventMode: 'static' on stage; 'passive' on platformLayer
+        and charLayer; 'none' on bgLayer; 'static' on the full-screen pointer tap listener.
+        Wire pointertap on the canvas for the jump action.
+      - >
+        PlatformScrollSystem: manages array of segment sprites (tinted gray rectangles representing
+        ground, transparent for gaps). Each tick: move all sprites left by scrollSpeed * delta.
+        Recycle off-screen segments to right edge using LevelGenerator output. Track distanceTravelled
+        and increase scrollSpeed by 5 every 200 units. PlatformRenderer: manages the Pixi display
+        objects; receives update data from system each tick.
+      - >
+        PlayerCharacter entity: holds position (fixed x = viewport.width * 0.25), velocityY,
+        state. CharacterRenderer: 48×48 orange tinted Graphics rect (approx #E87A0B, satisfies
+        canvas CoS 48px minimum). Each tick: pass state to PhysicsSystem.step() to get next
+        position. GSAP squash on land: gsap.to(charSprite.scale, {y: 0.8, duration: 0.04,
+        yoyo: true, repeat: 1, ease: 'power1.inOut', onComplete: resolveIdle}).
+        Add to asset-manifest: scene-dash-benchmark (placeholder atlas JSON), audio-sfx-dash
+        (placeholder audio sprite JSON) with correct prefixes.
+    definition_of_done:
+      - "acceptance[] tests go red then green (bun run test:run exits 0)"
+      - "integration call site exists at src/game/dash-benchmark/screens/gameController.ts — exercises platform scroll system, character controller, and PhysicsSystem each tick"
+      - "every file in files.integration is exercised by at least one acceptance test"
+      - "CoS sub-walk clean for core-interaction: tap fires jump via pointertap (pointer events); tap ignored during Jumping/Falling; touch-action:none on canvas container"
+      - "CoS sub-walk clean for canvas: character 48×48px visible at 390 viewport; platform lane in bottom 40%; no overlap with HUD band or DOM-reserved bottom"
+      - "CoS sub-walk clean for animated-dynamics: character jump follows parabolic arc (velocity + gravity per frame), not instant position jump; landing uses squash settle"
+      - "touch target: full-screen tap zone satisfies ≥ 44×44 px (entire canvas area)"
+      - "screen root elements: canvas resizeTo=container; no content rendered in reserved_top_px=0 or reserved_bottom_px=64 DOM zones"
+      - "bun run build passes within 3 fix cycles"
+    risk: HIGH
+    risk_reason: "Central integration point (GameController switch from DOM to Pixi). All systems wire here. Breakage blocks all downstream batches."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BATCH 3 — Obstacles + Collision + Loss Sequence + Screen Flash
+  # ─────────────────────────────────────────────────────────────────────────
+  - id: 3
+    name: "Obstacles + Collision + Loss Sequence + Screen Flash"
+    priority: P0
+    player_visible: >
+      Player sees ground spikes (red triangles) and floating barriers (purple rectangles)
+      approaching from the right. Collision with any obstacle: game freezes 200ms, white
+      flash (alpha 0→0.6→0 over 100ms), thud SFX placeholder triggers, results screen
+      slides up with 'Oops! Try Again?' heading and Try Again / Start Screen buttons.
+    features:
+      - obstacle-system
+      - screen-flash-effect
+      - loss-sequence
+    cos_covered: [animated-dynamics, core-interaction, canvas]
+    ux_zones:
+      thumb_zone: "center"
+      touch_targets: [try-again-button, start-screen-link]
+      feedback_surfaces: [obstacle-sprites, gap-visual, screen-flash, screen-overlay]
+    acceptance:
+      # obstacle-system
+      - given: "level generator outputs a spike at segment 3"
+        should: "ObstacleRenderer places a 24×20px red triangle sprite at the correct x,y on the platform"
+      - given: "level generator outputs a floating barrier"
+        should: "12×40px purple rect is placed with 8px clearance above max jump height (BarrierY ≤ platform_base_y - max_jump_height - 8)"
+      - given: "level generator output for Warm-up tier (level 1)"
+        should: "only spike obstacles present (no barriers); spike frequency ≤ 10% of segments"
+      - given: "character bounding box overlaps any obstacle bounding box"
+        should: "boardState transitions to Lost immediately"
+      - given: "character falls below viewport bottom (gap fall)"
+        should: "boardState transitions to Lost (already covered by physics — integration check)"
+      # obstacle constraints
+      - given: "generated level"
+        should: "no spike is placed within 2 character-widths of level start"
+      - given: "generated level with gaps"
+        should: "no obstacle placed within 3 character-widths of a gap; no adjacent gaps"
+      # screen-flash-effect
+      - given: "boardState transitions to Lost"
+        should: "full-screen white Graphics rect alpha tweens 0→0.6→0 over 100ms (GSAP power1.inOut); rect is in uiLayer above all game content"
+      # loss-sequence order
+      - given: "collision detected"
+        should: "sequence fires in order: Lost state set → input disabled → 200ms freeze (GSAP delayedCall) → screen flash → loss audio fires → results screen slides from bottom (300ms power2.out)"
+      - given: "loss results screen shown"
+        should: "heading reads 'Oops! Try Again?' (not 'Game Over')"
+      - given: "Try Again button tapped"
+        should: "same level restarts with same seed; boardState resets to Idle"
+      # canvas CoS — obstacle visuals
+      - given: "obstacle sprites rendered at 390px viewport"
+        should: "spike and barrier are visually distinct from each other and from the platform (different colors)"
+      # animated-dynamics — no instant state change
+      - given: "loss sequence plays"
+        should: "player sees: freeze pause → flash → slide — no instant jump from game to results screen"
+    test_loci:
+      - describe: "dash-benchmark: obstacle placement"
+        file: "tests/dash-benchmark/obstacle-system.test.ts"
+        cases:
+          - "places spike at correct position from level descriptor"
+          - "places barrier with clearance above max jump height"
+          - "warm-up tier has no barriers, spike freq ≤ 10%"
+          - "no spike within 2cw of level start"
+          - "no obstacle within 3cw of gap; no adjacent gaps"
+      - describe: "dash-benchmark: collision detection"
+        file: "tests/dash-benchmark/collision.test.ts"
+        cases:
+          - "transitions to Lost on character-obstacle bounding box overlap"
+          - "transitions to Lost on gap fall below viewport bottom"
+      - describe: "dash-benchmark: loss sequence"
+        file: "tests/dash-benchmark/loss-sequence.test.ts"
+        cases:
+          - "screen flash alpha tweens 0→0.6→0 via GSAP"
+          - "loss screen heading is 'Oops! Try Again?'"
+          - "Try Again restarts same level with same seed"
+    files:
+      state:
+        - src/game/dash-benchmark/entities/Obstacle.ts
+      integration:
+        - src/game/dash-benchmark/screens/gameController.ts
+        - src/game/dash-benchmark/renderers/ObstacleRenderer.ts
+        - src/game/dash-benchmark/renderers/GameRenderer.ts
+        - src/game/screens/ResultsScreen.tsx
+      test:
+        - tests/dash-benchmark/obstacle-system.test.ts
+        - tests/dash-benchmark/collision.test.ts
+        - tests/dash-benchmark/loss-sequence.test.ts
+    how:
+      - >
+        Obstacle.ts: types SpikeDef (x, y, width=24, height=20) and BarrierDef (x, y, width=12, height=40).
+        ObstacleRenderer: for each obstacle from level generator, create tinted Graphics shapes:
+        spike = red triangle (#CC2200, drawn as polygon), barrier = purple rect (#7700CC).
+        Bounding-box collision each tick: if character.bounds.intersects(obstacle.bounds) → dispatch
+        lostAction to gameState. Obstacle descriptors recycled when off-screen left.
+      - >
+        GameRenderer.ts: holds uiLayer reference. On loss: adds full-screen white Graphics rect
+        (app.screen.width × app.screen.height, alpha=0) to uiLayer. Tweens alpha 0→0.6→0 over 100ms
+        using GSAP power1.inOut. Kill tween in destroy(). Loss sequence uses gsap.delayedCall(0.2, ...)
+        for the 200ms freeze before flash. Never use setTimeout/setInterval for animation timing
+        (guardrail #3).
+      - >
+        ResultsScreen.tsx: add `outcome: 'win' | 'loss'` signal (read from gameState.boardState).
+        Branch rendering: loss branch shows 'Oops! Try Again?' heading + 'Try Again' primary button
+        (min 44×44pt) + 'Start Screen' secondary link. Win branch stays separate (handled in batch 4).
+        Slide-in: GSAP animates the results container translateY from 100% to 0 over 300ms power2.out
+        triggered after flash completes.
+    definition_of_done:
+      - "acceptance[] tests go red then green (bun run test:run exits 0)"
+      - "integration call site exists at gameController.ts — ObstacleRenderer initialized, collision checked each tick, loss sequence fires on boardState=Lost"
+      - "every file in files.integration is exercised by at least one acceptance test"
+      - "CoS sub-walk clean for animated-dynamics: loss sequence has ordered animation steps (freeze→flash→slide), no instant jump to results; flash uses GSAP not setTimeout"
+      - "CoS sub-walk clean for core-interaction: input disabled in Lost state; input re-enabled after Try Again"
+      - "CoS sub-walk clean for canvas: obstacle sprites are visually distinct colors; barrier has clearance above max jump height"
+      - "touch targets: Try Again button ≥ 44×44 px; Start Screen link ≥ 44×44 px tap area"
+      - "no placeholder text in ResultsScreen: heading reads 'Oops! Try Again?' on loss path"
+      - "bun run build passes within 3 fix cycles"
+    risk: MEDIUM
+    risk_reason: "Touches GameController (existing) and ResultsScreen (existing); collision detection timing must align with physics step; GSAP sequence ordering is strict"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BATCH 4 — Distance HUD + Win Sequence + Results Screen (win) + Audio
+  # ─────────────────────────────────────────────────────────────────────────
+  - id: 4
+    name: "Distance HUD + Win Sequence + Audio + Results Screen (win)"
+    priority: P0
+    player_visible: >
+      Player sees a real-time distance counter in top-left. On reaching the goal:
+      scroll freezes, win chime plays, score pops in (back.out 300ms), Level Complete
+      screen slides from bottom with 'Next Level' and 'Play Again' buttons. Final score
+      uses distance * speedMultiplier (two multiplicative dimensions).
+    features:
+      - distance-score-hud
+      - win-sequence
+      - results-screen
+      - game-audio
+    cos_covered: [animated-dynamics, scoring, canvas]
+    ux_zones:
+      thumb_zone: "center (results buttons) + out-of-reach (HUD counter)"
+      touch_targets: [next-level-button, play-again-button, try-again-button, start-screen-link]
+      feedback_surfaces: [distance-counter-text, screen-overlay, score-display, outcome-heading]
+    acceptance:
+      # distance-score-hud
+      - given: "game is running"
+        should: "Pixi Text in top-left of hudLayer shows current distance as integer; font ≥ 18px; text does not overlap platform lane"
+      - given: "distance value increments"
+        should: "HUD text updates every frame to show new value"
+      # win-sequence order
+      - given: "distance reaches goal (boardState transitions to Won)"
+        should: "sequence fires: Won state → input disabled → win audio fires → scroll frozen → score pop-in (GSAP back.out 300ms, scale 0→1) → Level Complete slides from bottom (300ms power2.out) → Next Level + Play Again buttons enabled"
+      - given: "Level Complete screen shown"
+        should: "heading reads 'Level Complete' (not 'Game Over'); distance score is shown with pop-in animation"
+      # scoring CoS — full formula visible
+      - given: "player completes level having triggered at least one speed increase"
+        should: "displayed score > raw distanceTravelled (speedMultiplier > 1.0 made it larger)"
+      - given: "player at speed increase moment (every 200 units)"
+        should: "score formula: levelScore = floor(distanceTravelled * (currentScrollSpeed / SCROLL_SPEED))"
+      # Next Level button
+      - given: "player taps Next Level"
+        should: "level increments, new level generated with new seed, game restarts; score reset to 0"
+      - given: "player taps Play Again on win screen"
+        should: "same level restarts with same seed (retry current level)"
+      # game-audio
+      - given: "win sequence fires"
+        should: "audio-sfx-dash bundle's win chime alias is played via coordinator.audio (if loaded)"
+      - given: "loss sequence fires"
+        should: "audio-sfx-dash bundle's loss thud alias is played via coordinator.audio (if loaded)"
+      - given: "audio bundle not loaded"
+        should: "game continues without error (audio is optional per GDD)"
+      # canvas CoS — HUD placement
+      - given: "HUD counter at 390×844"
+        should: "counter at top-left within hudLayer; y position between 8 and 40px (within HUD band); does not overlap platform lane at y=506"
+    test_loci:
+      - describe: "dash-benchmark: distance HUD"
+        file: "tests/dash-benchmark/hud.test.ts"
+        cases:
+          - "HUD text shows current distance each frame"
+          - "HUD text font is at least 18px"
+          - "HUD y position is within 0-40px band (no platform overlap)"
+      - describe: "dash-benchmark: win sequence"
+        file: "tests/dash-benchmark/win-sequence.test.ts"
+        cases:
+          - "win screen heading is 'Level Complete'"
+          - "score pop-in fires via GSAP back.out on win"
+          - "Next Level increments level and resets score"
+          - "Play Again on win restarts same level same seed"
+      - describe: "dash-benchmark: scoring formula"
+        file: "tests/dash-benchmark/scoring.test.ts"
+        cases:
+          - "levelScore = floor(distance * currentScrollSpeed / SCROLL_SPEED)"
+          - "score > distance when speedMultiplier > 1.0"
+      - describe: "dash-benchmark: audio wiring"
+        file: "tests/dash-benchmark/audio.test.ts"
+        cases:
+          - "win chime plays on Won state"
+          - "loss thud plays on Lost state"
+          - "game continues without error when audio bundle not loaded"
+    files:
+      state:
+        - src/game/dash-benchmark/audio/audioSetup.ts
+      integration:
+        - src/game/dash-benchmark/screens/gameController.ts
+        - src/game/dash-benchmark/renderers/HudRenderer.ts
+        - src/game/screens/ResultsScreen.tsx
+        - src/game/asset-manifest.ts
+      test:
+        - tests/dash-benchmark/hud.test.ts
+        - tests/dash-benchmark/win-sequence.test.ts
+        - tests/dash-benchmark/scoring.test.ts
+        - tests/dash-benchmark/audio.test.ts
+    how:
+      - >
+        HudRenderer.ts: create Pixi Text at position (8, 8) in hudLayer. Style: fontSize=24,
+        fontFamily='system-ui', fill=0xFFFFFF, fontWeight='700'. Each tick receive distance value
+        and update text.text = String(Math.floor(distance)). In destroy(): text.destroy().
+        HudRenderer.init(hudLayer, viewportW, viewportH): verify text.y + text.height < 40 (HUD
+        band assertion).
+      - >
+        Win sequence in gameController.ts: on boardState=Won, disable input, call
+        audioSetup.playWin(), freeze scrollSystem (scrollSpeed=0), then GSAP sequence:
+        score pop-in → slide-in. ResultsScreen.tsx win branch: heading 'Level Complete',
+        distance score shown with pop-in (scale 0→1, back.out 300ms), Next Level button
+        (goto('game') + incrementLevel), Play Again button (goto('game'), same seed).
+        LevelScore computed as floor(distance * scrollSpeed / SCROLL_SPEED) in gameState.
+      - >
+        audioSetup.ts: wraps coordinator.audio.play(alias) calls with try/catch; exports playWin()
+        and playLoss(). Audio bundle alias names: 'sfx-win-chime' and 'sfx-loss-thud' (matching
+        audio-sfx-dash bundle in asset-manifest). Add audio-sfx-dash bundle entry to manifest with
+        correct audio-* prefix.
+    definition_of_done:
+      - "acceptance[] tests go red then green (bun run test:run exits 0)"
+      - "integration call site exists at gameController.ts — HudRenderer updates each tick; win sequence wired to boardState=Won; audio fires on win/loss"
+      - "every file in files.integration is exercised by at least one acceptance test"
+      - "CoS sub-walk clean for animated-dynamics: win score pop-in uses GSAP back.out 300ms; Level Complete slides from bottom power2.out 300ms; no instant transitions"
+      - "CoS sub-walk clean for scoring: levelScore = distance * speedMultiplier; two multiplicative dimensions verified in scoring.test.ts; skilled player score > 1× distance"
+      - "CoS sub-walk clean for canvas: HUD counter ≥ 18px, within top 40px band, no overlap with platform"
+      - "touch targets: Next Level ≥ 44×44 px; Play Again ≥ 44×44 px; Try Again ≥ 44×44 px; Start Screen link ≥ 44×44 px"
+      - "win screen heading reads 'Level Complete'; loss screen heading reads 'Oops! Try Again?'"
+      - "audio errors are caught silently (audio optional per GDD)"
+      - "bun run build passes within 3 fix cycles"
+    risk: MEDIUM
+    risk_reason: "ResultsScreen.tsx now handles both win/loss branches with different GSAP sequences; audio integration requires coordinator access from game code"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BATCH 5 — Start Screen Content + Loading Screen Theme
+  # ─────────────────────────────────────────────────────────────────────────
+  - id: 5
+    name: "Start Screen Content + Loading Screen Theme"
+    priority: P1
+    player_visible: >
+      Player sees 'Dash Benchmark' title, 'Tap to jump' instruction line, and a large
+      'Start' button (min 44×44 pt) on a dark background. Loading screen shows dark
+      background with spinner. Start button triggers audio unlock before navigating.
+    features:
+      - start-screen-content
+      - loading-screen
+    cos_covered: []
+    ux_zones:
+      thumb_zone: "center (start button)"
+      touch_targets: [start-button]
+      feedback_surfaces: [title-text, instruction-text]
+    acceptance:
+      # start-screen-content
+      - given: "player opens the game for the first time"
+        should: "start screen shows title 'Dash Benchmark', instruction 'Tap to jump', and a 'Start' button"
+      - given: "player taps the Start button"
+        should: "audio is unlocked (unlockAudio() called), then game transitions to game screen"
+      - given: "Start button rendered at 390px viewport"
+        should: "button hit area ≥ 44×44 px; button is in the center/lower-center thumb zone"
+      - given: "title text rendered"
+        should: "font size ≥ 24px; instruction text font size ≥ 16px; contrast is legible (white on dark)"
+      # loading-screen (background color collision resolution)
+      - given: "loading screen shown"
+        should: "background color is #1a1a2e (dark, consistent with Dash Benchmark test-environment theme)"
+      - given: "start screen shown"
+        should: "background color is #1a1a2e (dark; scaffold #BCE083 replaced with game theme)"
+    test_loci:
+      - describe: "dash-benchmark: start screen"
+        file: "tests/dash-benchmark/start-screen.test.ts"
+        cases:
+          - "renders title 'Dash Benchmark'"
+          - "renders instruction 'Tap to jump'"
+          - "renders Start button (not Play)"
+          - "Start button calls unlockAudio before goto game"
+          - "Start button hit area ≥ 44×44 px"
+    files:
+      state: []
+      integration:
+        - src/game/mygame/screens/startView.ts
+        - src/game/tuning/types.ts
+      test:
+        - tests/dash-benchmark/start-screen.test.ts
+    how:
+      - >
+        src/game/mygame/screens/startView.ts: replace title.textContent 'Start Screen' with
+        'Dash Benchmark'. Add instruction paragraph: textContent = 'Tap to jump'; fontSize ~18px.
+        Replace playBtn.textContent 'Play' with 'Start'. Ensure playBtn minimum size: padding
+        16px 48px + fontSize 1.25rem satisfies 44pt target. backgroundColor = '#1a1a2e'.
+        Audio unlock already present (deps.unlockAudio() in click handler) — verify ordering:
+        unlockAudio before goto.
+      - >
+        src/game/tuning/types.ts: update GAME_DEFAULTS.screens.startBackgroundColor and
+        loadingBackgroundColor to '#1a1a2e'. LoadingScreen.tsx reads this from tuning —
+        no direct code change needed if CSS class is parameterized by tuning. If bg-[#BCE083]
+        is hardcoded in JSX, update to bg-[#1a1a2e] in LoadingScreen.tsx as well.
+      - >
+        Design-smell prevention: ensure title text 'Dash Benchmark' and instruction 'Tap to jump'
+        are real GDD copy, not scaffold placeholder. No 'Start Screen' text remains in player-
+        facing code.
+    definition_of_done:
+      - "acceptance[] tests go red then green (bun run test:run exits 0)"
+      - "integration call site exists at startView.ts — title, instruction, and Start button all rendered"
+      - "every file in files.integration is exercised by at least one acceptance test"
+      - "no scaffold placeholder text visible to player ('Start Screen', 'Play' button label replaced)"
+      - "touch target: Start button ≥ 44×44 px verified in test"
+      - "start screen in center thumb zone: button center-aligned"
+      - "background color #1a1a2e applied to both start and loading screens"
+      - "bun run build passes within 3 fix cycles"
+    risk: LOW
+    risk_reason: "DOM-only changes to existing screens; no Pixi or state logic involved"

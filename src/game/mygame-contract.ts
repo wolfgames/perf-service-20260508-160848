@@ -37,6 +37,8 @@ export interface GameControllerDeps {
   audio: unknown;
   gameData: unknown;
   analytics: unknown;
+  /** Navigate to a named screen (e.g. 'results'). Optional for back-compat. */
+  goto?: (screen: string) => void;
 }
 
 export interface GameController {
