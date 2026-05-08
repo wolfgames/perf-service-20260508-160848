@@ -80,4 +80,10 @@ describe('dash-benchmark: game controller init', () => {
     // Container constructed for layers (bg, platform, char, hud, ui = 5 containers)
     expect((Container as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(5);
   });
+
+  it('destroy cleans up without throwing when called before init (defensive edge case)', () => {
+    // Edge case: destroy() must not throw if called on a controller that was never init'd
+    const ctrl = setupGame(makeDeps() as never);
+    expect(() => ctrl.destroy()).not.toThrow();
+  });
 });

@@ -40,4 +40,14 @@ describe('dash-benchmark: distance HUD', () => {
     expect(text.y).toBeGreaterThanOrEqual(0);
     expect(text.y + text.height).toBeLessThanOrEqual(40);
   });
+
+  it('HUD text floors fractional distance (always displays integer)', () => {
+    // Edge case: distance increments as a float; display must be a whole number
+    const renderer = createHudRenderer();
+    renderer.init({ addChild: vi.fn() } as never, 390, 844);
+    renderer.update(99.9);
+    expect(renderer.getText().text).toBe('99');
+    renderer.update(0.001);
+    expect(renderer.getText().text).toBe('0');
+  });
 });

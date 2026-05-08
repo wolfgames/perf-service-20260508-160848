@@ -72,4 +72,11 @@ describe('dash-benchmark: obstacle placement', () => {
       }
     }
   });
+
+  it('spike Y position sits flush on platform surface (not floating or embedded)', () => {
+    // Edge case: spike must touch the platform, not hover above or clip below
+    const spikeY = getObstacleY('spike');
+    // spikeY + SPIKE_HEIGHT should equal PLATFORM_BASE_Y exactly
+    expect(spikeY + SPIKE_HEIGHT).toBe(PLATFORM_BASE_Y);
+  });
 });

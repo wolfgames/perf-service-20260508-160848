@@ -47,4 +47,9 @@ describe('dash-benchmark: win sequence', () => {
     const b = generateLevel(3);
     expect(a).toEqual(b);
   });
+
+  it('score is 0 when distance is 0 (edge: no progress)', () => {
+    // Edge case: if the player somehow triggers win with 0 distance, score must be 0
+    expect(computeLevelScore(0, 280)).toBe(0);
+  });
 });

@@ -26,4 +26,17 @@ describe('dash-benchmark: audio wiring', () => {
     await expect(audio.playWin()).resolves.toBeUndefined();
     await expect(audio.playLoss()).resolves.toBeUndefined();
   });
+
+  it('win and loss audio use distinct alias keys (no accidental swapped calls)', async () => {
+    // Edge case: ensure win and loss never call the same alias
+    const winCalls: string[] = [];
+    const lossCalls: string[] = [];
+    const winAudio = createAudioSetup({ play: (a) => { winCalls.push(a); return Promise.resolve(); } });
+    const lossAudio = createAudioSetup({ play: (a) => { lossCalls.push(a); return Promise.resolve(); } });
+    await winAudio.playWin();
+    await lossAudio.playLoss();
+    expect(winCalls[0]).not.toBe(lossCalls[0]);
+    expect(winCalls[0]).toBe('sfx-win-chime');
+    expect(lossCalls[0]).toBe('sfx-loss-thud');
+  });
 });

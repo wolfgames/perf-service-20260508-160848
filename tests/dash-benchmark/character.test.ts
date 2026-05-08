@@ -76,4 +76,11 @@ describe('dash-benchmark: character controller', () => {
     expect(sprite.width).toBe(48);
     expect(sprite.height).toBe(48);
   });
+
+  it('character x position is fixed at 25% of viewport width', () => {
+    // Edge case: character must always be at 25% of viewportWidth, regardless of viewport size
+    const controller = createCharacterController({ groundY: GROUND_Y, viewportWidth: VIEWPORT_W, viewportBottom: VIEWPORT_BOTTOM });
+    const sprite = controller.getSprite();
+    expect(sprite.x).toBe(VIEWPORT_W * 0.25); // 97.5
+  });
 });

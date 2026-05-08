@@ -53,4 +53,10 @@ describe('dash-benchmark: loss sequence', () => {
     const b = generateLevel(1);
     expect(a).toEqual(b);
   });
+
+  it('LOSS_HEADING is not Game Over (per GDD requirement)', () => {
+    // Edge case: GDD explicitly forbids 'Game Over' — heading must be the softer copy
+    expect(LOSS_HEADING).not.toBe('Game Over');
+    expect(LOSS_HEADING).toBe('Oops! Try Again?');
+  });
 });

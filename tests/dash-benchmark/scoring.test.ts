@@ -14,4 +14,11 @@ describe('dash-benchmark: scoring formula', () => {
     const score = computeLevelScore(200, increasedSpeed);
     expect(score).toBeGreaterThan(200);
   });
+
+  it('score is floored to integer (no fractional scores)', () => {
+    // Edge case: floor() ensures the displayed score is always a whole number
+    const score = computeLevelScore(201, DASH_TUNING.SCROLL_SPEED + 1);
+    expect(score).toBe(Math.floor(score));
+    expect(Number.isInteger(score)).toBe(true);
+  });
 });

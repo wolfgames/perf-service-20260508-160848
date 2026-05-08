@@ -47,4 +47,12 @@ describe('dash-benchmark: physics system', () => {
     const next = stepPhysics(falling, 0.016, null, VIEWPORT_BOTTOM, false);
     expect(next.movementState).toBe('Lost');
   });
+
+  it('step on already-Lost character returns unchanged state (terminal state guard)', () => {
+    // Edge case: once Lost, physics must not continue to mutate state
+    const lost: CharacterState = { y: VIEWPORT_BOTTOM + 50, velocityY: 200, movementState: 'Lost' };
+    const next = stepPhysics(lost, 0.016, null, VIEWPORT_BOTTOM, false);
+    expect(next).toBe(lost); // same reference — no allocation, no mutation
+    expect(next.movementState).toBe('Lost');
+  });
 });

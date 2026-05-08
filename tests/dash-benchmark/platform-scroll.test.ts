@@ -32,4 +32,13 @@ describe('dash-benchmark: platform scroll system', () => {
       expect(segs[i].xOffset + segs[i].widthPx).toBeCloseTo(segs[i + 1].xOffset, 1);
     }
   });
+
+  it('frozen tick does not change segment positions (win/loss state)', () => {
+    // Edge case: when frozen=true, segments must not move
+    const system = createPlatformScrollSystem(1);
+    const xBefore = system.getSegments()[0].xOffset;
+    system.tick(0.5, true); // frozen — no scroll
+    const xAfter = system.getSegments()[0].xOffset;
+    expect(xAfter).toBe(xBefore);
+  });
 });

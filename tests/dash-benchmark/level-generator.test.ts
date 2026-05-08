@@ -42,4 +42,15 @@ describe('dash-benchmark: level generator', () => {
     expect(fb[2].obstacle?.type).toBe('spike');
     expect(fb.every(s => s.type !== 'gap')).toBe(true);
   });
+
+  it('different level numbers produce different seeds (no two adjacent levels are identical)', () => {
+    // Edge case: seed = level * 48271 must produce distinct sequences for distinct levels
+    const level1 = generateLevel(1);
+    const level2 = generateLevel(2);
+    // Different seeds — at least some segments must differ across levels
+    // (not guaranteed to differ in every position, but deterministically different seeds)
+    const level1Str = JSON.stringify(level1);
+    const level2Str = JSON.stringify(level2);
+    expect(level1Str).not.toBe(level2Str);
+  });
 });

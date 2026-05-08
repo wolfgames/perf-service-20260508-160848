@@ -31,10 +31,12 @@ export const setupGame: SetupGame = (deps: GameControllerDeps): GameController =
 
   let app: Application | null = null;
   let inputEnabled = false;
+  let gameEnding = false; // guard against re-entrant win/loss handling
   let charState: CharacterState = createCharacterState(PLATFORM_BASE_Y);
   let prevCharState: CharacterState = charState;
   let jumpQueued = false;
 
+  // Initial level placeholder — reset to gameState.level() in init().
   const scrollSystem = createPlatformScrollSystem(1);
   const gameRenderer = createGameRenderer();
   const hudRenderer = createHudRenderer();
@@ -54,19 +56,25 @@ export const setupGame: SetupGame = (deps: GameControllerDeps): GameController =
   };
 
   const handleLoss = async (): Promise<void> => {
+    if (gameEnding) return;
+    gameEnding = true;
     inputEnabled = false;
     setAriaText('Oh no! Try Again?');
     await new Promise<void>(resolve => { gsap.delayedCall(0.2, resolve); });
     await gameRenderer.playLossFlash();
     await audio.playLoss();
     dashGameState.setLost();
+    deps.goto?.('results');
   };
 
   const handleWin = (): void => {
+    if (gameEnding) return;
+    gameEnding = true;
     inputEnabled = false;
     setAriaText('Level Complete!');
     void audio.playWin();
     dashGameState.setWon();
+    deps.goto?.('results');
   };
 
   return {
@@ -128,8 +136,12 @@ export const setupGame: SetupGame = (deps: GameControllerDeps): GameController =
       hudRenderer.init(hudLayer, viewportW, viewportH);
 
       // ── Initial state ────────────────────────────────────────────────────
-      dashGameState.reset(1);
-      scrollSystem.reset(1);
+      // dashGameState.level() is pre-set by ResultsScreen (handleNextLevel / handleTryAgain)
+      // before navigating to game. For first load it defaults to 1.
+      gameEnding = false;
+      const currentLevel = dashGameState.level();
+      dashGameState.reset(currentLevel);
+      scrollSystem.reset(currentLevel);
       platformRenderer.update(scrollSystem.getSegments());
       obstacleRenderer.update(scrollSystem.getSegments());
       charRenderer.update(charState, prevCharState);
@@ -224,7 +236,6 @@ const checkObstacleCollision = (
     const obstW = seg.obstacle.type === 'spike' ? 24 : 12;
     const obstH = seg.obstacle.type === 'spike' ? 20 : 40;
     const obstY = PLATFORM_BASE_Y - obstH;
-
     if (charX < obstX + obstW && charX + charSize > obstX && charY < obstY + obstH && charY + charSize > obstY) {
       return true;
     }

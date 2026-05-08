@@ -262,12 +262,27 @@ verify:
     content_fidelity_clean: true
 
 stabilize:
-  status: pending
-  completion_ratio: ""
-  test_count: 0
-  known_issues: []
+  status: complete
+  completion_ratio: "18/18 features (100%)"
+  test_count: 204
+  known_issues:
+    - "viewport-reserve-not-applied: canvas inset-0 overlaps logo zone visually; logo z-stacks on top; no playability impact"
   cos_failed: []
-  cos_rationale: []
+  cos_rationale: {}
   completeness_gaps: []
-  pipeline_status: ""
-  carry_forward: {}
+  pipeline_status: complete
+  warnings:
+    - "deferred-closed:browser-mcp-unavailable — browser MCP not present in this environment; smoke scope; code review confirms no playability blocker; re-justified as environment constraint not a game defect"
+    - "deferred-closed:scaffold-test-failures-preexisting — 20 pre-existing scaffold test failures confirmed unchanged from base commit; not introduced by pipeline work"
+    - "deferred-closed:math-random-in-tick — G9 violation fixed in verify phase (PlatformScrollSystem.ts replaced Math.random() with deterministic round-robin counter); closed"
+    - "deferred-closed:L1-too-easy — level pacing fixed in verify phase (goalForLevel 200 → 3000+); L1 now ~11s at base speed; closed"
+    - "deferred-closed:journey-breaks — all 3 player_flow journey breaks fixed inline in player_flow phase; closed"
+    - "deferred-closed:asset-fallbacks-style — labeled_shape style confirmed consistent (color+shape differentiation); not a regression; closed"
+  carry_forward:
+    next_pass_ready: true
+    pass_stability: stable
+    unresolved_for_next_pass:
+      - "viewport-reserve: canvas technically overlaps DOM logo zone; logo z-stacks correctly so no playability impact; clean solution would reserve canvas height = viewport - 64px bottom at pass secondary"
+      - "browser-smoke-unverified: no browser MCP available; recommend manual smoke before pass secondary launch"
+      - "asset-atlas-pending: all four visual fallbacks (character orange, platform gray, spike red, barrier purple) are Graphics shapes; atlas upgrade needed when art is ready"
+      - "chunk-size-warning: Pixi index bundle 1.1MB; dynamic import split recommended at pass secondary"

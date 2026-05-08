@@ -89,4 +89,16 @@ describe('dash-benchmark: start screen', () => {
     expect(paddingMatch).toBeTruthy();
     ctrl.destroy();
   });
+
+  it('start screen background is dark (#1a1a2e) per game theme', () => {
+    // Edge case: scaffold default #BCE083 must have been replaced with dark game theme
+    const deps = makeDeps();
+    const ctrl = setupStartScreen(deps);
+    const container = document.createElement('div');
+    ctrl.init(container);
+    // Check that no light-green scaffold color is present
+    expect(container.innerHTML).not.toContain('#BCE083');
+    expect(container.innerHTML.toLowerCase()).toContain('#1a1a2e');
+    ctrl.destroy();
+  });
 });

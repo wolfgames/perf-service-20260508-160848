@@ -16,4 +16,11 @@ describe('dash-benchmark: collision detection', () => {
     expect(isCharacterLost({ movementState: 'Lost', y: 900, velocityY: 50 })).toBe(true);
     expect(isCharacterLost({ movementState: 'Idle', y: 506, velocityY: 0 })).toBe(false);
   });
+
+  it('abutting boxes (touching edges) do NOT collide — edge case', () => {
+    // Two boxes where char right edge exactly equals obstacle left edge — no overlap
+    const char: Bounds = { x: 50, y: 460, width: 48, height: 48 };
+    const obstacle: Bounds = { x: 98, y: 460, width: 24, height: 20 }; // starts exactly at char right edge
+    expect(checkBoundingBoxCollision(char, obstacle)).toBe(false);
+  });
 });
